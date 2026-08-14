@@ -3,6 +3,10 @@ from __future__ import annotations
 import torch
 
 
+def var_diff(bs, ref):
+    return torch.abs(bs.var(1).mean(-1).mean() - ref.var(0).mean())
+
+
 def sigreg(z, num_slices=64, num_knots=17, t_max=5):
     t = torch.linspace(-t_max, t_max, num_knots, device=z.device)
     z = torch.atleast_2d(z)

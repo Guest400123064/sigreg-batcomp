@@ -48,7 +48,10 @@ class SimpleModel(nn.Module, ConfigMixin):
         self.num_hidden_layers = num_hidden_layers
         self.num_attention_heads = num_attention_heads
         self.num_input_channels = num_input_channels
+        self.context_size = context_size
 
+        self.input_rmsnorm = nn.RMSNorm(hidden_size)
+        self.input_project = nn.Linear(num_input_channels, hidden_size)
         self.pos_embedding = nn.Embedding(context_size, hidden_size)
         self.encoder = MLP(hidden_size, hidden_size * 2)
         self.decoder = Decoder(
@@ -64,6 +67,7 @@ class SimpleModel(nn.Module, ConfigMixin):
 
     def get_state_latents(self, x):
         x = torch.atleast_2d(x)
+        x = self.input_rmsnorm(self.input_project(x))
         return x + self.encoder(x)
 
     def forward(self, x):
