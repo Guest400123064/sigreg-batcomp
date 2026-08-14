@@ -111,13 +111,13 @@ Superposition is characterized by a small between‑regime scatter relative to w
 
 ### 3.2 Mean‑Shift Monotonicity Lemma
 
-**Lemma 1** (Mean‑shift monotonicity). *Let $S$ be the Epps–Pulley criterion. For any centered distribution $P_0$ with mean $0$, the function $\mu \mapsto S(T_\mu P_0)$ is nondecreasing in $\|\mu\|$, with its minimum at $\mu = 0$.*
+**Lemma 1** (Mean‑shift monotonicity). Let $S$ be the Epps–Pulley criterion. For any centered distribution $P_0$ with mean $0$, the function $\mu \mapsto S(T_\mu P_0)$ is nondecreasing in $\|\mu\|$, with its minimum at $\mu = 0$.
 
 *Proof sketch.* The Epps–Pulley statistic is a weighted $L^2$ distance between the empirical characteristic function and the Gaussian characteristic function $e^{-\frac12 \|t\|^2}$. Shifting the distribution by $\mu$ multiplies its characteristic function by $e^{i \mu^\top t}$, which adds an oscillatory component. For fixed centered shape, increasing $\|\mu\|$ makes the characteristic function deviate further from the Gaussian, hence increasing the statistic. A detailed proof is in Appendix C.
 
 ### 3.3 Representativeness Bias Persists Under Data Parallelism
 
-**Lemma 2** (Bias persistence). *Let $q$ be a homogeneous local batch distribution. Define the expected batch regularizer $\bar{R}(\theta) = \mathbb{E}_{B \sim q}[ S(\hat{P}_B(\theta)) ]$. Then, under mild regularity, $\nabla_\theta \bar{R}(\theta) \ne \nabla_\theta S(\sum_r \pi_r P_r(\theta))$. Moreover, averaging gradients over multiple homogeneous batches (e.g., data parallel, gradient accumulation) leaves the expected gradient unchanged; it only reduces variance.*
+**Lemma 2** (Bias persistence). Let $q$ be a homogeneous local batch distribution. Define the expected batch regularizer $\bar{R}(\theta) = \mathbb{E}_{B \sim q}[ S(\hat{P}_B(\theta)) ]$. Then, under mild regularity, $\nabla_\theta \bar{R}(\theta) \ne \nabla_\theta S(\sum_r \pi_r P_r(\theta))$. Moreover, averaging gradients over multiple homogeneous batches (e.g., data parallel, gradient accumulation) leaves the expected gradient unchanged; it only reduces variance.
 
 *Proof.* The nonlinearity of $S$ implies that the average of gradients is not the gradient of the average distribution. For $M$ homogeneous batches,
 
@@ -136,19 +136,19 @@ In contrast, a representative batch contains the mixture $\sum_r \pi_r P_r$. For
 
 ### 3.5 Forecasting Lower Bound from Superposition
 
-**Theorem 1** (Lower bound on linear forecasting error). *Suppose the data follows a regime‑mixture with regime‑conditional next‑step means $\mu_s^{\text{future}} = \mathbb{E}[z_{t+1}\mid s_t=s]$. Let $h_t$ be the context embedding from which a linear predictor $W$ must predict $z_{t+1}$. If the between‑regime scatter in $h_t$ is low, specifically if the linear approximation error*
+**Theorem 1** (Lower bound on linear forecasting error). Suppose the data follows a regime‑mixture with regime‑conditional next‑step means $\mu_s^{\text{future}} = \mathbb{E}[z_{t+1}\mid s_t=s]$. Let $h_t$ be the context embedding from which a linear predictor $W$ must predict $z_{t+1}$. If the between‑regime scatter in $h_t$ is low, specifically if the linear approximation error
 
 $$
 \epsilon^2_{\mathrm{lin}} = \min_{W,b} \mathbb{E}\|\mu_{s_t}^{\text{future}} - (W h_t + b)\|^2
 $$
 
-*is $\epsilon^2$, then the minimal linear forecasting loss satisfies*
+is $\epsilon^2$, then the minimal linear forecasting loss satisfies
 
 $$
 \mathcal{L}_{\text{pred}} \;\ge\; \mathbb{E}\|\varepsilon\|^2 + \epsilon^2_{\mathrm{lin}},
 $$
 
-*where $\varepsilon$ is irreducible regime‑conditional noise.*
+where $\varepsilon$ is irreducible regime‑conditional noise.
 
 *Proof.* Decompose the expected squared error; the first term is unavoidable, the second is the cost of not linearly recovering the regime‑specific future mean. Under complete superposition ($\mu_{s_t}^{\text{future}}$ independent of $h_t$), $\epsilon^2_{\mathrm{lin}} = \sum_s \pi_s \|\mu_s^{\text{future}} - \bar{\mu}^{\text{future}}\|^2 = V_B^{\text{future}}$. The full proof is in Appendix E.
 
@@ -333,16 +333,14 @@ Because $S$ is nonlinear, $\bar{R}(\theta) = \sum_r \pi_r S(P_r(\theta)) \ne S\b
 *Proof of Theorem 1.* Assume $z_{t+1} = \mu_{s_t}^{\text{future}} + \varepsilon_{t+1}$ with $\mathbb{E}[\varepsilon_{t+1}|s_{1:t+1}]=0$. The linear forecasting loss is
 
 $$
-\mathbb{E}\|z_{t+1} - (W h_t + b)\|^2
-=
-\mathbb{E}\|\varepsilon\|^2 + \mathbb{E}\|\mu_{s_t}^{\text{future}} - (W h_t + b)\|^2,
+\mathbb{E}\|z_{t+1} - (W h_t + b)\|^2 = \mathbb{E}\|\varepsilon\|^2 + \mathbb{E}\|\mu_{s_t}^{\text{future}} - (W h_t + b)\|^2,
 $$
 
 because cross terms vanish. The second term is the linear approximation error to the regime‑conditional future mean. If $h_t$ contains no regime information linearly, the best linear predictor is the unconditional mean $\bar{\mu}^{\text{future}}$, and the error is $\sum_s \pi_s \|\mu_s^{\text{future}} - \bar{\mu}^{\text{future}}\|^2 = V_B^{\text{future}}$. Hence the lower bound. QED.
 
 **A norm‑based variant.** The following proposition gives the same conclusion without an expectation decomposition, showing that overlap of the *history* embeddings directly limits any bounded‑norm linear predictor.
 
-**Proposition 1** (Forecasting lower bound under history overlap). *Let $h_A$ and $h_B$ be context vectors for two histories with distinct future conditional means $\mu_A \ne \mu_B$. Suppose $\|h_A - h_B\| \le \epsilon$. Then for any linear predictor $W$ with operator norm bounded by $M$, there exist inputs for which the prediction error is at least $\frac{1}{4}\bigl(\|\mu_A - \mu_B\| - M\epsilon\bigr)^2$. In particular, if $h_A = h_B$, no linear predictor can distinguish the two futures.*
+**Proposition 1** (Forecasting lower bound under history overlap). Let $h_A$ and $h_B$ be context vectors for two histories with distinct future conditional means $\mu_A \ne \mu_B$. Suppose $\|h_A - h_B\| \le \epsilon$. Then for any linear predictor $W$ with operator norm bounded by $M$, there exist inputs for which the prediction error is at least $\frac{1}{4}\bigl(\|\mu_A - \mu_B\| - M\epsilon\bigr)^2$. In particular, if $h_A = h_B$, no linear predictor can distinguish the two futures.
 
 *Proof.* Let $\delta = \|\mu_A - \mu_B\|$. Since $\|W h\| \le M\|h\|$ for all $h$,
 
