@@ -189,6 +189,7 @@ We recommend the following protocol:
 1. **Reference set**: Randomly sample a large set of embeddings from the whole dataset (or a diverse subset) after initialization. Compute its mean variance $\hat{\sigma}^2_D$.
 2. **Batch probe**: For the actual batch construction strategy, draw $K$ batches (e.g., 10–50) of the same nominal size, compute their per‑batch variance, and average: $\bar{V}_{\text{actual}}$.
 3. **Standardization** (optional): Estimate the mean $\mu_{\text{ref}}$ and std $\sigma_{\text{ref}}$ of variance over many i.i.d. reference batches of the same size. Compute the $z$-score:
+
 $$
    z = \frac{\bar{V}_{\text{actual}} - \mu_{\text{ref}}}{\sigma_{\text{ref}} / \sqrt{K}}.
 $$

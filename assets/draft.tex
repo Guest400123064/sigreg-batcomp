@@ -1,0 +1,442 @@
+\documentclass[10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{lipsum}
+\usepackage{multicol}
+\usepackage{xcolor}
+\usepackage{natbib}
+\usepackage{enumitem}
+\usepackage[font=small]{caption}
+\setlength{\abovecaptionskip}{2pt}
+\setlength{\belowcaptionskip}{0pt}
+\setlength{\textfloatsep}{6pt plus 2pt minus 2pt}
+\setlength{\intextsep}{4pt plus 2pt minus 1pt}
+\setlength\columnsep{20pt}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds}
+
+\usepackage[a4paper,left=1.50cm, right=1.50cm, top=1.50cm, bottom=1.50cm]{geometry}
+
+\usepackage{titlesec}
+\titlespacing{\section}{0pt}{6pt plus 2pt minus 1pt}{3pt plus 1pt}
+\titlespacing{\subsection}{0pt}{4pt plus 2pt minus 1pt}{2pt plus 1pt}
+
+% Define theorem environments
+\usepackage{amsthm}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\author{}
+
+\title{}
+
+\begin{document}
+	\begin{center}
+		{\Large \textbf{Representativeness, Not Just Effective Sample Size: A Probe for Batch-Composition Failures of SIGReg on Time Series}}\\
+		\vspace{0.8em}
+		{\large A Statistical and Empirical Analysis for JEPA-Style Forecasting}\\
+		\vspace{0.3em}
+		\textit{Research Proposal}
+	\end{center}
+
+	\vspace{2mm}
+    \begin{center}
+        \rule{150mm}{0.2mm}
+    \end{center}
+    \vspace{1mm}
+
+	\begin{abstract}
+SIGReg is a regularization method for self-supervised learning that enforces an isotropic Gaussian marginal on embeddings. It has shown promise in robotics and time series, but on temporally correlated data, the empirical marginal within a mini-batch can be badly unrepresentative of the overall data distribution. When a batch is constructed from contiguous windows of one or a few sequences, it concentrates in a small region of the latent space, creating a spuriously non-Gaussian batch marginal. We distinguish two distinct statistical effects: \emph{effective sample size} controls the variance of the batch statistic, while \emph{representativeness} controls its systematic bias. We prove that under homogeneous batch construction the representativeness bias persists under data-parallel training, gradient accumulation, and longer training, whereas effective-sample-size effects diminish. We further show, via a constructive example, that this bias can drive different dynamic regimes to overlap in the history embedding space, and that such overlap provably increases the minimal linear forecasting loss. The central deliverable is a \emph{representativeness probe}: a lightweight two-sample statistic comparing each batch's empirical embedding distribution against a corpus-level reference, computable at or near initialization, intended to warn practitioners before harmful batch constructions cause damage. We plan to validate the mechanism and the probe on synthetic Markov-chain data with controlled regime structure, and to test whether the probe predicts final forecasting quality on real time-series benchmarks.
+
+        \textbf{Keywords}: self-supervised learning, JEPA, SIGReg, batch composition, representativeness, effective sample size, two-sample testing, temporal correlation
+	\end{abstract}
+
+	\vspace{1mm}
+    \begin{center}
+        \rule{150mm}{0.2mm}
+    \end{center}
+    \vspace{3mm}
+
+\begin{multicols*}{2}
+
+\section{Introduction}
+
+Predictive self-supervised learning learns representations by predicting held-out structure from visible context. The Joint-Embedding Predictive Architecture (JEPA) is a prominent example: by predicting latent representations rather than raw inputs, JEPA avoids reconstructing irrelevant detail and focuses on predictive structure, with demonstrated success in images~\cite{assran2023ijepa}, video~\cite{bardes2024vjepa}, and robotics~\cite{maes2026lewm}.
+
+Among methods for preventing representational collapse in JEPA, regularization-based approaches are attractive for their simplicity. SIGReg~\cite{balestriero2025lejepa} enforces an isotropic Gaussian marginal on embeddings via the Epps--Pulley statistic~\cite{epps1983epps}. Under i.i.d.\ sampling assumptions, the isotropic Gaussian is provably minimax-optimal for downstream linear prediction~\cite{balestriero2025lejepa}. SIGReg has enabled stable end-to-end training in robotics~\cite{maes2026lewm} and has been adopted for time series~\cite{petersen2026hepa}.
+
+Time series, however, violate the i.i.d.\ assumption. SIGReg computes its statistic on the empirical marginal of embeddings within each mini-batch. When a batch is assembled from contiguous windows of one or a few sequences, adjacent samples are correlated, the batch concentrates in a small region of the state space, and its empirical marginal can appear strongly non-Gaussian even when the true data marginal is well matched to a Gaussian. The regularizer's gradient then applies a corrective pressure whose strength the true marginal would not warrant---a miscalibration that can distort latent structure the prediction objective is trying to learn. A related failure mode was observed in multi-task robotic learning, where Gaussianization compressed task-dependent latent clusters, motivating temporally centered SIGReg~\cite{liu2026tclwm}.
+
+We hypothesize that the deciding factor is \emph{batch representativeness}: how faithfully each batch's empirical embedding distribution reflects the corpus-level marginal. We separate this from \emph{effective sample size}, which has been the primary lens in prior work. Our theoretical analysis shows that effective sample size mostly affects variance, while representativeness induces a bias that does not vanish with more data-parallel workers, larger batches, or longer training. This distinction is the foundation of our contribution.
+
+We then ask whether the failure can be predicted early---even at initialization---and propose a \emph{representativeness probe}: a lightweight two-sample statistic comparing each batch's empirical embedding distribution against a corpus-level reference. The probe is intended as a monitoring instrument, not as a universal batch-construction recipe. We plan to (a) establish the mechanism on synthetic Markov-chain data with controlled regime structure, (b) construct and validate the probe against ground truth, and (c) test whether the probe predicts final forecasting quality on real benchmarks.
+
+\section{Related Work}
+
+\subsection{Joint-Embedding Predictive Architectures}
+
+Early self-supervised learning relied on contrastive objectives with negative samples~\cite{chen2020simclr,he2020moco}. Non-contrastive methods eliminated negatives through architectural asymmetry: BYOL~\cite{grill2020byol} used a predictor network and stop-gradient, SimSiam~\cite{chen2021simsiam} removed the momentum encoder, and DINO~\cite{caron2021dino} used centering and sharpening. JEPA~\cite{lecun2022jepa} unified this trajectory by predicting latent representations of unseen regions from visible context; I-JEPA~\cite{assran2023ijepa} applied it to images, V-JEPA~\cite{bardes2024vjepa} to video, and LeWM~\cite{maes2026lewm} demonstrated stable end-to-end training from raw pixels.
+
+Regularization-based variants prevent collapse through explicit constraints on the embedding space: Barlow Twins~\cite{zbontar2021barlow} minimizes cross-correlation redundancy, VICReg~\cite{bardes2022vicreg} regularizes variance and covariance, and W-MSE~\cite{ermolov2021wmse} whitens embeddings via Cholesky decomposition. SIGReg~\cite{balestriero2025lejepa} instead matches the full marginal to an isotropic Gaussian via the Epps--Pulley statistic on random 1D projections; its minimax optimality is proven under i.i.d.\ assumptions whose relaxation to dependent data is precisely our subject. Recent variants include KerJEPA~\cite{zimmermann2025kerjepa}, LpJEPA~\cite{kuang2026lpjepa}, and VISReg~\cite{wu2026visreg}.
+
+For temporally correlated data, JEPA has been applied to video~\cite{bardes2024vjepa}, robotics~\cite{maes2026lewm}, and time series~\cite{tsjepa2025,petersen2026hepa}. Closest to our concern, TC-LeWM~\cite{liu2026tclwm} observed that marginal Gaussianization compresses task-dependent latent clusters and proposed Gaussianizing temporally centered embeddings instead---a model-side fix that changes the regularization target. Klindt et al.~\cite{klindt2026lejepa} proved LeJEPA linearly identifies latent variables if and only if the latent distribution is Gaussian, and reported a non-monotonic interaction between regularization strength and temporal correlation. Neither work analyzes the batch-level sampling mechanism behind these observations, which is the gap we address; our contribution is complementary to TC-SIGReg, as we discuss in \S\ref{sec:gap}.
+
+\subsection{Batch Statistics and Effective Sample Size}
+
+Batch-statistics estimators are known to be sensitive to what the batch contains. The BatchNorm literature~\cite{singh2019evalnorm,unravelingbn2023} documents train/test discrepancy and shows that batch composition---there, class diversity---determines estimation quality. Experience replay in reinforcement learning~\cite{lin1992replay,mnih2015dqn,schaul2016prioritized} addresses a cousin of our problem: decorrelating consecutive samples to stabilize training.
+
+For correlated data, classical statistics provides the notion of effective sample size: under autocorrelation $\rho_k$, $N_{\mathrm{eff}} = N/(1+2\sum_k \rho_k)$, and estimation error scales as $1/\sqrt{N_{\mathrm{eff}}}$~\cite{geyer1992mcmc,flegal2010batchmeans,stan2023ess}. These tools are standard in the MCMC literature but, to our knowledge, have not been applied to regularization statistics in SSL. Prior analyses of batch size in SSL~\cite{vaessen2024batchsize} attribute batch-size effects to gradient noise rather than to representativeness of the batch sample.
+
+\subsection{Time-Series Representation Learning}
+
+Time-series representation learning has been dominated by contrastive methods~\cite{yue2022ts2vec} and reconstruction-based masked modeling. TS-JEPA~\cite{tsjepa2025} and HEPA~\cite{petersen2026hepa} bring JEPA to time series, with HEPA adopting SIGReg-style regularization. Neither analyzes how batch construction interacts with the regularizer under temporal correlation.
+
+\section{Research Gap}
+\label{sec:gap}
+
+Three gaps converge on this work. First, regularization-based JEPA is known to \emph{sometimes} damage latent structure~\cite{klindt2026lejepa,liu2026tclwm}, but the batch-level mechanism---when and why the regularizer's pressure becomes miscalibrated under temporal correlation---has not been analyzed. Second, the statistical tools for this analysis (effective sample size, two-sample discrepancy) exist but have not been connected to SSL regularization. Third, practitioners currently have no instrument to tell whether their data loader is harming the regularizer: the only available remedies are blind fixes (shuffle everything, enlarge batches) or modifying the loss itself~\cite{liu2026tclwm}.
+
+Our positioning relative to TC-SIGReg deserves emphasis. TC-SIGReg changes \emph{what} is Gaussianized; we leave the objective untouched and ask \emph{when} the naive objective fails and how to detect it. The two are complementary: a representativeness probe is useful when the loss cannot be modified (fixed codebases, pretrained pipelines), when temporal centering would discard task-relevant slow structure, and as a monitoring tool regardless of which regularizer is used.
+
+\section{Problem Formulation}
+\label{sec:formulation}
+
+\subsection{Setup}
+
+We consider JEPA-style self-supervised learning for time-series forecasting. An encoder maps each observation to a latent embedding $z_t = f_\theta(x_t)$; a context network aggregates history into $h_t = g_\phi(z_{1:t})$; the next embedding is predicted linearly as $\hat{z}_{t+1} = W h_t$. Training minimizes $\mathcal{L} = \mathcal{L}_{\text{pred}} + \lambda \cdot \mathcal{L}_{\text{reg}}$, where $\mathcal{L}_{\text{pred}} = \|W h_t - z_{t+1}\|^2$ and $\mathcal{L}_{\text{reg}}$ is the SIGReg regularizer enforcing $\mathcal{N}(0,I)$ marginality of $z_t$ via the Epps--Pulley statistic. We focus on the univariate case for analytical tractability, but the arguments generalize to multivariate embeddings.
+
+\subsection{An Ideal Terminal State Exists}
+
+Before diagnosing failures, we ask whether the three properties a practitioner wants---(i) marginal Gaussianity of $z_t$, (ii) decodability of $x_t$ from $z_t$, and (iii) linear predictability of $z_{t+1}$ from $h_t$---are mutually compatible at all. They are, under mild regularity. The following proposition formalizes the constructive argument.
+
+\begin{proposition}[Existence of an ideal terminal state]
+\label{prop:ideal}
+Let the data-generating process admit a latent representation $\tilde{z}_t$ that is a sufficient statistic for $x_t$ and whose marginal is absolutely continuous with respect to the Lebesgue measure. Assume that the conditional expectation $m(\tilde{z}_{1:t}) = \mathbb{E}[\tilde{z}_{t+1} \mid \tilde{z}_{1:t}]$ is well-defined and can be approximated by a neural network. Then there exists an encoder $f_\theta$ and a context network $g_\phi$ such that:
+\begin{enumerate}[leftmargin=*]
+    \item $z_t = f_\theta(x_t)$ has marginal distribution $\mathcal{N}(0,I)$;
+    \item $x_t$ is recoverable from $z_t$ via an invertible transformation;
+    \item there exists a linear map $W$ with $\|W h_t - z_{t+1}\|^2$ arbitrarily small.
+\end{enumerate}
+\end{proposition}
+
+The proof is given in Appendix~\ref{app:existence}. The key idea is that any atomless distribution can be pushed forward to a standard Gaussian via an invertible differentiable map $F$. Setting $z_t = F(\tilde{z}_t)$ yields (i) and (ii); the context network can then learn to invert $F$ on the history, compute the conditional mean $m$, and map the result forward through $F$, placing the prediction in a designated subspace of $h_t$ for the linear readout. This demonstrates that Gaussianization \emph{per se} does not preclude a good representation.
+
+Two caveats delimit this argument. When the underlying structure is genuinely discrete (an atomic marginal), no continuous invertible push-forward to a Gaussian exists, and Gaussianization necessarily distorts cluster geometry; we therefore treat structural incompatibility as a separate, already-studied phenomenon~\cite{klindt2026lejepa,liu2026tclwm} and focus on the regime where a compatible configuration exists. Second, existence says nothing about whether gradient descent \emph{finds} this state---which is where batch composition enters.
+
+\subsection{Batch Composition: Effective Sample Size versus Representativeness}
+
+SIGReg evaluates its statistic on the empirical marginal of embeddings within each mini-batch. When the batch is a representative sample of the training corpus, the empirical marginal approximates the true marginal and the regularizer's pressure is well-calibrated. When the batch is assembled from contiguous windows of one or a few sequences---standard practice for time series---it can concentrate in a small region of the state space. The batch then appears spuriously non-Gaussian, the Epps--Pulley statistic is inflated, and the resulting gradient pushes embeddings apart with a strength the true marginal would not warrant, potentially pulling the optimizer away from the ideal terminal state.
+
+We define two measurable batch properties.
+
+\paragraph{Effective sample size.}
+Under autocorrelation $\rho_k$, the effective sample size is $N_{\mathrm{eff}} = N / (1 + 2\sum_k \rho_k)$, where $N$ is the nominal batch size. For a stationary, representative batch, the deviation of a regularizer statistic from its population value scales as $O(N_{\mathrm{eff}}^{-1/2})$ and is unbiased in expectation up to finite-sample corrections. Thus effective sample size controls the \emph{variance} of the batch statistic.
+
+\paragraph{Representativeness.}
+We define representativeness operationally as the discrepancy between the batch's empirical embedding distribution and a corpus-level reference distribution, measurable by a two-sample statistic. A batch is representative if its empirical distribution is close to the reference; it is unrepresentative if it concentrates on a subset of dynamic regimes. Representativeness controls the \emph{bias} of the batch statistic: even as the batch size grows, if each batch is drawn from a single regime, the expected statistic does not converge to the population statistic.
+
+\subsection{A Formal Decomposition of Bias and Variance}
+
+Let $P_r$ denote the latent distribution of regime $r$, and let $\pi_r$ be its corpus-level weight. The population marginal is $P = \sum_r \pi_r P_r$. Let $S$ be the Epps--Pulley statistic (or any nonlinear functional of the distribution). For a representative batch of size $N$, we have
+\begin{equation}
+\mathbb{E}[S(\hat{P}_B)] = S(P) + O(N_{\mathrm{eff}}^{-1}).
+\end{equation}
+For a homogeneous batch of size $N$ drawn entirely from regime $r$, we have
+\begin{equation}
+\lim_{N_{\mathrm{eff}}\to\infty} \mathbb{E}_{B\sim q}[S(\hat{P}_B)] = \sum_r \pi_r S(P_r) \neq S\Bigl(\sum_r \pi_r P_r\Bigr),
+\end{equation}
+where the inequality follows from the nonlinearity of $S$. Thus representativeness creates a non-vanishing bias, while effective sample size only creates a finite-sample error.
+
+This distinction is formalized in Appendix~\ref{app:ess-rep}. We state a proposition:
+
+\begin{proposition}[Bias vs.\ variance]
+\label{prop:bias}
+Let $S$ be a nonlinear functional of the empirical distribution, such as the Epps--Pulley statistic. Under homogeneous batch construction, the expected batch statistic converges to $\sum_r \pi_r S(P_r)$, while under representative batch construction it converges to $S(P)$. The difference is non-zero for any non-trivial mixture, and it does not vanish as the batch size or number of batches increases.
+\end{proposition}
+
+The proof follows immediately from the nonlinearity of $S$ and is given in Appendix~\ref{app:ess-rep}.
+
+\subsection{Bias Persistence under Data Parallelism and Gradient Accumulation}
+
+A common practitioner intuition is that larger batches, more GPUs, or gradient accumulation will fix batch statistics. The following proposition shows this is false for representativeness bias.
+
+\begin{proposition}[Bias persistence]
+\label{prop:persist}
+Consider a training setup where each local batch is homogeneous, and gradients are averaged across $M$ local batches either in data-parallel training or via gradient accumulation. As $M \to \infty$, the averaged gradient converges to
+\[
+\nabla_\theta \sum_r \pi_r S(P_r(\theta)),
+\]
+which is not equal to $\nabla_\theta S(\sum_r \pi_r P_r(\theta))$. Thus representativeness bias is not reduced by more workers or accumulation steps.
+\end{proposition}
+
+The proof is in Appendix~\ref{app:persist}. The key reason is that the gradient operator is linear in the chain-rule sense but nonlinear in the distribution argument: averaging gradients of $S$ over local batches is not the same as taking the gradient of $S$ on the aggregated batch.
+
+\subsection{From Biased Gradient to Collapsed Geometry}
+\label{sec:scatter}
+
+Propositions~\ref{prop:bias} and~\ref{prop:persist} establish that homogeneous batches produce a biased gradient. We now show what that biased gradient does to the representation. Rather than track the optimizer on a specific data-generating process, we route the entire effect through a single scalar mediator---the \emph{between-regime scatter}---which (i) admits a clean characterization for any number of regimes and any atomless conditionals, (ii) reuses only the defining property of SIGReg (that it targets $\mathcal{N}(0,I)$), and (iii) directly governs both downstream metrics we care about, linear decodability and forecasting error.
+
+Decompose the second moment of the latent as in linear discriminant analysis. With regime weights $\pi_r$, regime-conditional means $\mu_r(\theta) = \mathbb{E}[z \mid \mathrm{regime}~r]$, conditional covariances $C_r(\theta)$, and grand mean $\bar{\mu} = \sum_r \pi_r \mu_r$, define
+\[
+\begin{aligned}
+\Sigma_W(\theta) &= \textstyle\sum_r \pi_r C_r(\theta), \\
+\Sigma_B(\theta) &= \textstyle\sum_r \pi_r (\mu_r - \bar{\mu})(\mu_r - \bar{\mu})^\top,
+\end{aligned}
+\]
+with total covariance $\Sigma = \Sigma_W + \Sigma_B$. The scalar mediator is $\mathrm{tr}\,\Sigma_B$: it is the between-regime separation, it is zero exactly when all regime means coincide, and it upper-bounds linear regime-decodability.
+
+\begin{lemma}[Scatter decomposition of the two objectives]
+\label{lem:scatter}
+Assume each regime has an atomless input marginal, so the push-forward of Proposition~\ref{prop:ideal} applies per regime. Then:
+\begin{enumerate}[leftmargin=*]
+    \item The \emph{representative} regularizer $S\bigl(\sum_r \pi_r P_r\bigr)$ attains its minimum (value $0$) exactly on $\{\bar{\mu} = 0,\; \Sigma_W + \Sigma_B = I\}$. This constrains only the sum $\Sigma_W + \Sigma_B$ and leaves $\Sigma_B$ free.
+    \item The \emph{biased} regularizer $\sum_r \pi_r S(P_r)$ attains its minimum (value $0$) exactly at $\{\mu_r = 0,\; C_r = I \;\forall r\}$, i.e.\ $\Sigma_B = 0$ and $\Sigma_W = I$.
+\end{enumerate}
+\end{lemma}
+
+Lemma~\ref{lem:scatter} (proved in Appendix~\ref{app:scatter}) identifies representativeness bias as a \emph{between-vs-within scatter miscalibration}: the biased objective Gaussianizes each regime and thereby annihilates the only geometry that distinguishes regimes, whereas the correct objective Gaussianizes the \emph{mixture} and leaves between-regime separation intact. This is the same push-forward as Proposition~\ref{prop:ideal}, applied per regime instead of to the mixture. It also connects to the class-diversity findings in the BatchNorm literature~\cite{unravelingbn2023}: a batch statistic estimated within a single class carries no between-class information.
+
+\begin{proposition}[Representativeness bias collapses between-regime scatter]
+\label{prop:scattercollapse}
+Under the setup of Lemma~\ref{lem:scatter}:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{(Regularizer minimizers.)} As stated in Lemma~\ref{lem:scatter}, the biased regularizer forces $\Sigma_B = 0$; the representative regularizer does not.
+    \item \textbf{(Destabilization of the ideal state.)} Let $\theta_0$ be the ideal terminal state of Proposition~\ref{prop:ideal}, with mixture marginal $\mathcal{N}(0,I)$, $\mathcal{L}_{\mathrm{pred}}(\theta_0) = 0$, and separated regimes $\Sigma_B(\theta_0) \succ 0$. Then for every $\lambda > 0$, $\theta_0$ is a global minimizer of $\mathcal{L}_{\mathrm{pred}} + \lambda\, S\bigl(\sum_r \pi_r P_r\bigr)$, but is not a stationary point of $\mathcal{L}_{\mathrm{pred}} + \lambda \sum_r \pi_r S(P_r)$, whose regularizer term is strictly positive at $\theta_0$.
+    \item \textbf{(Regularization-dominated limit.)} As $\lambda \to \infty$, minimizers of the biased objective satisfy $\Sigma_B \to 0$, while minimizers of the representative objective retain $\Sigma_B \succ 0$ whenever $\mathcal{L}_{\mathrm{pred}}$ rewards separation.
+\end{enumerate}
+\end{proposition}
+
+The proof is in Appendix~\ref{app:scatter}. Part 2 is the sharp form of the second arrow: the ideal state whose existence Proposition~\ref{prop:ideal} guarantees is precisely what the representativeness bias destabilizes, and the escape direction is contraction of between-regime scatter. Parts 1 and 3 need only $S \ge 0$ and $S = 0 \Leftrightarrow \mathcal{N}(0,I)$; they make no use of the specific functional form of Epps--Pulley, so the same conclusion holds for any $\mathcal{N}(0,I)$-targeting regularizer, including VICReg and Barlow Twins.
+
+The two-state analysis is recovered as a special case (Corollary~\ref{cor:twostate} in Appendix~\ref{app:scatter}): for a deterministic two-state cycle, the biased objective drives both regime means to the origin at zero prediction loss but zero decodability, while the representative objective preserves a nonzero symmetric separation.
+
+\begin{remark}[Why minimizers rather than mean-monotonicity]
+One might hope to prove that the biased gradient \emph{everywhere} shrinks each $\|\mu_r\|$. This is false in general. For a symmetric centered conditional of shape $P_0$, the Epps--Pulley functional $\mu \mapsto S(P_0 * \delta_\mu)$ has curvature at $\mu = 0$ equal to $2\sqrt{\pi}\,\mathbb{E}_{Y \sim P_0}\bigl[e^{-Y^2/4}\bigl(\tfrac12 - \tfrac{Y^2}{4}\bigr)\bigr]$ (Appendix~\ref{app:scatter}), which is negative for high-variance conditionals---a small mean shift can then \emph{decrease} $S$. Clean monotonicity holds only for near-point-mass conditionals, where $\partial_u S(\delta_u) = \sqrt{\pi}\, u\, e^{-u^2/4} > 0$, and in the large-separation limit, where $S(P_0 * \delta_\mu) - S(P_0) \to 2\sqrt{\pi}\,\mathbb{E}[e^{-Y^2/4}] > 0$. We therefore state Proposition~\ref{prop:scattercollapse} in terms of minimizers and destabilization of the ideal state, which require none of this, and treat the graded dependence of $\Sigma_B$ on $\lambda$ and on batch homogeneity as an empirical prediction, measured directly in Stage 1.
+\end{remark}
+
+\subsection{Overlap in History Space Hurts Forecasting}
+\label{sec:forecast}
+
+The final analytical piece connects the collapsed latent geometry to forecasting through the history embedding $h_t$. Between-regime collapse propagates to $h_t$ by two routes. At the biased optimum all $P_r$ coincide, so $z \perp \mathrm{regime}$; since $h_t = g_\phi(z_{1:t})$, the data-processing inequality gives $I(\mathrm{state}_{t+1}; h_t) = 0$ and no predictor of any form can forecast a regime-dependent future. More gently, for an $L$-Lipschitz $g_\phi$ the between-regime scatter in $h$ is controlled by that in $z$, so $\Sigma_B \to 0$ drives the history embeddings of distinct regimes together and activates the following bound.
+
+\begin{proposition}[Forecasting lower bound under history overlap]
+\label{prop:hbound}
+Let $h_A$ and $h_B$ be context vectors for two histories with distinct future conditional means $\mu_A \neq \mu_B$. Suppose $\|h_A - h_B\| \le \epsilon$. Then for any linear predictor $W$ with operator norm bounded by $M$, there exist inputs for which the prediction error is at least
+\[
+\tfrac14\bigl(\|\mu_A - \mu_B\| - M\epsilon\bigr)^2 .
+\]
+In particular, if $h_A = h_B$, no linear predictor can distinguish the two futures.
+\end{proposition}
+
+The proof is in Appendix~\ref{app:hbound}. This is the rigorous version of the intuition that ``trace crossing'' or ``superposition'' hurts forecasting: not just raw latent overlap, but overlap of the history embeddings that the linear predictor receives. Together with Proposition~\ref{prop:scattercollapse} it closes the chain---the biased gradient shrinks $\Sigma_B$, shrinking $\Sigma_B$ pulls $h_A$ toward $h_B$, and history overlap lower-bounds forecasting error.
+
+\subsection{The Core Problem}
+
+We can now state the research question concisely: \emph{does homogeneous batch composition drive the optimizer away from the ideal terminal state, and can we detect this deviation early with a lightweight two-sample probe?} The theoretical chain is
+{\footnotesize
+\[
+\begin{aligned}
+\text{unrepresentative batches} &\longrightarrow \text{biased SIGReg gradient} \\
+&\longrightarrow \Sigma_B \downarrow\ \text{(latent/history overlap)} \\
+&\longrightarrow \text{increased forecasting loss}.
+\end{aligned}
+\]}
+The first arrow is Propositions~\ref{prop:bias} and~\ref{prop:persist}; the third is Proposition~\ref{prop:hbound}. The middle arrow is now established generally through the between-regime scatter $\Sigma_B$: Proposition~\ref{prop:scattercollapse} shows the biased objective forces $\Sigma_B \to 0$ and, more sharply, destabilizes the very terminal state Proposition~\ref{prop:ideal} constructs. The one element left to empirics is the graded rate at which $\Sigma_B$ shrinks with regularization strength and batch homogeneity. The probe is designed to monitor the first arrow without ground-truth regime labels; $\Sigma_B$ itself, measurable when labels are available, serves as the mediator we validate the chain against in synthetic experiments.
+
+\section{Research Design}
+\label{sec:design}
+
+Our study proceeds in three stages: (1) a controlled synthetic investigation to establish the causal mechanism; (2) construction and validation of the representativeness probe; (3) a real-data test of whether the probe predicts final performance.
+
+\subsection{Stage 1: Synthetic Markov-Chain Experiments}
+
+We generate data from hidden Markov models with a finite set of discrete latent states and continuous emissions, chosen so that a Gaussian-compatible embedding configuration exists (verifiable via the push-forward construction of Proposition~\ref{prop:ideal}). This isolates the sampling mechanism from structural incompatibility. We construct batches in three ways:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Representative}: windows drawn uniformly across regimes, so the batch matches the corpus mixture.
+    \item \textbf{Moderately unrepresentative}: windows from a subset of regimes.
+    \item \textbf{Highly unrepresentative}: a long contiguous segment dominated by one regime.
+\end{enumerate}
+Architecture, learning rate, and $\lambda$ are held constant. We measure:
+\begin{itemize}[leftmargin=*]
+    \item reconstruction fidelity: $R^2$ of a linear probe from $z_t$ to the true state identity (or raw observation);
+    \item forecasting performance: next-step prediction error via a linear probe on $h_t$;
+    \item the SIGReg statistic value itself, as a function of batch construction.
+\end{itemize}
+We expect condition (C) to degrade reconstruction and forecasting relative to (A), and---critically---that condition (A) demonstrates that multiple dynamic regimes do not by themselves prevent SIGReg from working.
+
+We also evaluate a round-robin scheme where each batch is still homogeneous but we cycle through regimes. According to Proposition~\ref{prop:persist}, this should still suffer representativeness bias, though the effect may be smaller than using contiguous windows from a single sequence. This directly tests the theoretical claim that bias does not average out over mini-batches.
+
+Baselines include shuffled-window batching (windows shuffled across sequences with within-window temporal order intact, preserving the context needed by the prediction loss) and, where applicable, TC-SIGReg~\cite{liu2026tclwm}.
+
+\subsection{Stage 2: Probe Construction and Validation}
+
+The reference distribution is obtained by caching embeddings of a large, shuffled sample of the training corpus. For each batch $B$, the probe computes a discrepancy $\Delta(B) = D(\hat{P}_B, \hat{P}_{\mathrm{ref}})$. Candidate statistics $D$:
+\begin{itemize}[leftmargin=*]
+    \item difference between batch and reference Epps--Pulley statistics (nearly free if already computed);
+    \item kernel MMD with an RBF kernel;
+    \item energy distance;
+    \item variance-ratio or effective-rank measure.
+\end{itemize}
+We evaluate candidates on synthetic data by their correlation with final forecasting performance, selecting the best predictor.
+
+\paragraph{Variance discrepancy probe.}
+The scatter decomposition of \S\ref{sec:scatter} predicts that harmful batch composition specifically removes between-regime scatter, so the batch variance falls below the corpus variance. This motivates the variance discrepancy
+\[
+\Delta = \bigl| \overline{\mathrm{Var}}(B) - \mathrm{Var}(D) \bigr|,
+\]
+where $\overline{\mathrm{Var}}(B)$ averages per-batch variance over several batches drawn from the actual strategy, and $\mathrm{Var}(D)$ is the variance over a large, shuffled reference set. Variance is robust and cheap to estimate even with small batches, and the probe can be computed at initialization since even a random encoder approximately preserves relative spreads. To make the probe comparable across batch sizes and datasets, we optionally standardize it: estimate the mean $\mu_{\mathrm{ref}}$ and standard deviation $\sigma_{\mathrm{ref}}$ of the variance over many i.i.d.\ reference batches of the same size, and report the $z$-score $z = (\bar{V}_{\mathrm{actual}} - \mu_{\mathrm{ref}}) / (\sigma_{\mathrm{ref}} / \sqrt{K})$ for $K$ actual batches.
+
+\paragraph{Training-free hypothesis.}
+We test whether the probe works \emph{training-free}. A randomly initialized encoder acts as an approximate random projection, which preserves pairwise distance structure in expectation (a Johnson--Lindenstrauss-type intuition); a homogeneous batch may therefore already appear concentrated at initialization. We treat this as a hypothesis to be tested, not a guarantee: we measure the probe's correlation with final performance at initialization and after a short warm-up ($\sim$100 steps). If the signal is weak at initialization, the warm-up version remains a practical early-warning instrument at negligible cost. In practice, a practitioner can estimate autocorrelation from the raw series as a proxy for assessing risk before training begins.
+
+\paragraph{Explicit TBD work.}
+The exact form of the probe is left as an explicit research task. The synthetic setup provides ground-truth labels for representativeness, allowing us to compare candidate probes not only against final performance but also against the true batch composition. We will report a decision curve: given a probe threshold, what is the false-positive and false-negative rate for detecting harmful batch construction?
+
+\subsection{Stage 3: Real-Data Validation}
+
+We test on univariate forecasting benchmarks with diverse autocorrelation profiles (e.g., electricity, traffic, weather). For each dataset we fix nominal batch size and vary batch construction: many short clips vs.\ few long clips, stride between windows, mixing across sequences. After warm-up (or at initialization, if Stage 2 supports it), we record the probe value, train to convergence, and measure the correlation between early probe value and final forecasting error across strategies. A quantitative prediction follows from the mechanism: effect sizes should grow with the dataset's estimated autocorrelation time.
+
+We note two scope limits: real series are often non-stationary, and our probe's reference-based definition of representativeness is intended to remain meaningful in that regime (it compares batch to corpus, not to a stationary law); and shuffling windows across sequences incurs I/O overhead that must be weighed against the benefit, which we report.
+
+\subsection{Mapping to the Quantitative Questions}
+
+Stage 1 addresses Q1 (monotonicity in autocorrelation, sweeping transition-matrix persistence), Q2 ($N_{\mathrm{eff}}$ as governing parameter, sweeping batch size and correlation jointly), and Q3 (representativeness threshold, sweeping regime coverage). Stage 2 addresses Q4 in a weakened, testable form: rather than measuring each link of the causal chain independently, we test whether the mechanism's end-to-end prediction---early probe value predicts late performance---holds. Stage 3 tests external validity.
+
+\section{Research Impact}
+
+For practitioners, the deliverable is a monitoring instrument: compute the probe early in training, and if it is high, restructure the data loader (more distinct sequences per batch, larger stride) using domain expertise. This targets cases where modifying the loss is impossible or undesirable, and complements structural fixes such as TC-SIGReg~\cite{liu2026tclwm}; it reduces the risk of silently degraded representations rather than claiming to improve state of the art.
+
+For SSL researchers, we provide a mechanistic account of how batch-statistics regularizers can misfire on non-i.i.d.\ data, plus a reusable synthetic benchmark and validation protocol. The probe concept may extend to other batch-level regularizers (VICReg, Barlow Twins), but their statistics differ (variance, cross-correlation) and we make no claim that the same thresholds or fixes transfer without further study.
+
+For the time-series community, the work argues that batch construction is a first-class design consideration alongside architecture and objective, and suggests evaluation protocols that report performance as a function of batching strategy. The broader message is methodological: SSL regularizers inherit classical statistics' sensitivity to sample representativeness, and classical tools---effective sample size, two-sample discrepancy---are practical instruments for diagnosing it.
+
+\end{multicols*}
+
+\appendix
+
+\section{Existence of an Ideal Terminal State}
+\label{app:existence}
+
+\begin{proof}[Proof of Proposition~\ref{prop:ideal}]
+Let $\tilde{z}_t \in \mathbb{R}^d$ be a sufficient statistic for $x_t$ with atomless marginal $P_{\tilde{z}}$. By the probability-integral transform (or the Rosenblatt transform in the multivariate case), there exists an invertible differentiable map $F : \mathbb{R}^d \to \mathbb{R}^d$ such that $F(\tilde{z}_t) \sim \mathcal{N}(0,I)$. Define the encoder $f_\theta$ to first compute $\tilde{z}_t$ and then apply $F$, i.e., $z_t = F(\tilde{z}_t)$. Then property (i) holds by construction.
+
+Since $F$ is invertible, $F^{-1}(z_t) = \tilde{z}_t$, and $\tilde{z}_t$ is sufficient for $x_t$; thus there exists a function $d$ such that $d(\tilde{z}_t) = x_t$ (almost everywhere). Define the decoder $\hat{x}_t = d(F^{-1}(z_t))$, which achieves exact reconstruction. Thus property (ii) holds.
+
+For property (iii), let $m(\tilde{z}_{1:t}) = \mathbb{E}[\tilde{z}_{t+1} \mid \tilde{z}_{1:t}]$ be the optimal predictor in $\tilde{z}$-space. Define the context network $g_\phi$ to first invert $F$ on each element of the history, compute $m$, and then apply $F$ to the result; place this value in a fixed subset of the coordinates of $h_t$, with zeros elsewhere. Let $W$ be the linear projection onto those coordinates. Then $W h_t = F(m(F^{-1}(z_{1:t})))$, and for any sufficiently expressive approximation of $m$, the prediction error $\|W h_t - z_{t+1}\|^2$ can be made arbitrarily small. This establishes property (iii). \end{proof}
+
+\section{Effective Sample Size versus Representativeness}
+\label{app:ess-rep}
+
+Let $P_r$ be the latent distribution of regime $r$, with weights $\pi_r$, and let $P = \sum_r \pi_r P_r$. Let $S(\cdot)$ be the Epps--Pulley statistic, which is a nonlinear functional of the empirical distribution. For a representative batch of size $N$, the empirical distribution $\hat{P}_N$ is an unbiased estimate of $P$ in the sense that $\mathbb{E}[\hat{P}_N] = P$ under i.i.d. sampling. By the standard theory of U-statistics, $S(\hat{P}_N)$ converges to $S(P)$ as $N\to\infty$ with rate determined by the effective sample size; in particular, $\mathbb{E}[S(\hat{P}_N)] = S(P) + O(N_{\mathrm{eff}}^{-1})$.
+
+Now consider a homogeneous batch construction where each batch is drawn from a single regime $r$, and regimes are selected with probability $\pi_r$. Let $q$ denote the distribution over such homogeneous batches. For a fixed $\theta$, the expected statistic is
+\[
+\mathbb{E}_{B\sim q}[S(\hat{P}_B)] = \sum_r \pi_r \mathbb{E}_{\hat{P}_B \sim P_r}[S(\hat{P}_B)].
+\]
+As the batch size within each regime grows, the inner expectation converges to $S(P_r)$. Therefore,
+\[
+\lim_{N_{\mathrm{eff}}\to\infty} \mathbb{E}_{B\sim q}[S(\hat{P}_B)] = \sum_r \pi_r S(P_r).
+\]
+Because $S$ is nonlinear, this is generally not equal to $S(\sum_r \pi_r P_r)$. For the Epps--Pulley statistic, the nonlinearity arises from the weighted integral of the squared difference between empirical and Gaussian characteristic functions, which does not commute with mixture averaging.
+
+Thus the representativeness bias is the difference
+\[
+\Delta S = S\Bigl(\sum_r \pi_r P_r\Bigr) - \sum_r \pi_r S(P_r) \neq 0.
+\]
+This difference does not vanish as the number of batches increases. \qed
+
+\section{Bias Persistence under Data Parallelism and Gradient Accumulation}
+\label{app:persist}
+
+We prove Proposition~\ref{prop:persist}. Let $\theta$ denote the encoder parameters, and let $S_B(\theta) = S(\hat{P}_B(\theta))$ be the regularizer loss for a local batch $B$. In a homogeneous batch construction, each local batch $B_i$ is drawn from a single regime $r_i$ with probability $\pi_{r_i}$. The gradient of the local regularizer is $\nabla_\theta S_{B_i}(\theta)$.
+
+Data-parallel training averages these gradients over $M$ workers:
+\[
+g_M(\theta) = \frac{1}{M}\sum_{i=1}^M \nabla_\theta S_{B_i}(\theta).
+\]
+As $M\to\infty$, by the law of large numbers,
+\[
+g_M(\theta) \to \mathbb{E}_{B\sim q}[\nabla_\theta S_B(\theta)] = \nabla_\theta \mathbb{E}_{B\sim q}[S_B(\theta)] = \nabla_\theta \sum_r \pi_r S(P_r(\theta)),
+\]
+assuming the interchange of gradient and expectation is valid (which holds under standard regularity conditions).
+
+The ideal gradient under a representative batch would be $\nabla_\theta S(\sum_r \pi_r P_r(\theta))$. Because $\sum_r \pi_r S(P_r(\theta)) \neq S(\sum_r \pi_r P_r(\theta))$ in general, the two gradients differ. Moreover, the difference is independent of $M$; increasing the number of workers only reduces variance, not the bias. The same argument holds for gradient accumulation across sequential micro-batches: the total update is the average of local gradients, which converges to the same biased expectation. \qed
+
+\section{Between-Regime Scatter Collapse}
+\label{app:scatter}
+
+We use only the defining properties of the Epps--Pulley statistic $S$: it is nonnegative, and $S(P) = 0$ if and only if every one-dimensional projection of $P$ is standard normal, which by the Cram\'er--Wold theorem holds iff $P = \mathcal{N}(0,I)$.
+
+\subsection*{D.1 Proof of Lemma~\ref{lem:scatter}}
+
+\textbf{Representative regularizer.} $S\bigl(\sum_r \pi_r P_r\bigr) = 0$ iff the mixture equals $\mathcal{N}(0,I)$, i.e.\ iff its mean is $0$ and its covariance is $I$. In terms of the scatter decomposition, $\bar{\mu} = 0$ and $\Sigma = \Sigma_W + \Sigma_B = I$. No further constraint is placed on the split between $\Sigma_W$ and $\Sigma_B$; in particular any $\Sigma_B \preceq I$ is attainable with $\Sigma_W = I - \Sigma_B$.
+
+\textbf{Biased regularizer.} $\sum_r \pi_r S(P_r) = 0$ iff every term vanishes (nonnegativity, $\pi_r > 0$), i.e.\ iff $P_r = \mathcal{N}(0,I)$ for all $r$. This forces $\mu_r = 0$ and $C_r = I$ for every $r$, hence $\bar{\mu} = 0$, $\Sigma_W = \sum_r \pi_r I = I$, and $\Sigma_B = \sum_r \pi_r \mu_r \mu_r^\top = 0$.
+
+\textbf{Realizability.} By Proposition~\ref{prop:ideal} applied to each regime's atomless input marginal, there is a per-regime push-forward sending $P_r \mapsto \mathcal{N}(0,I)$; an encoder of sufficient capacity realizes all of them simultaneously (exactly when regime input supports are disjoint, and to arbitrary accuracy otherwise). Thus the biased minimizer is attainable, and it collapses between-regime scatter. \qed
+
+\subsection*{D.2 Proof of Proposition~\ref{prop:scattercollapse}}
+
+Part 1 is Lemma~\ref{lem:scatter}.
+
+\emph{Part 2.} At $\theta_0$ the mixture marginal is $\mathcal{N}(0,I)$, so $S\bigl(\sum_r \pi_r P_r(\theta_0)\bigr) = 0$ and, with $\mathcal{L}_{\mathrm{pred}}(\theta_0) = 0$, both terms of the representative objective are simultaneously at their minima; hence $\theta_0$ is a global minimizer of $\mathcal{L}_{\mathrm{pred}} + \lambda\, S(\text{mixture})$ for every $\lambda > 0$. For the biased objective, $\Sigma_B(\theta_0) \succ 0$ means at least two regimes have $\mu_r \neq \bar{\mu} = 0$, so those $P_r \neq \mathcal{N}(0,I)$ and $S(P_r) > 0$; therefore $\sum_r \pi_r S(P_r(\theta_0)) > 0$, strictly above the regularizer's minimum of $0$. Consequently $\theta_0$ does not minimize the biased regularizer. It is moreover not a stationary point of the biased objective: $\nabla_\theta \mathcal{L}_{\mathrm{pred}}(\theta_0) = 0$ (prediction loss at its floor) and $\nabla_\theta S(\text{mixture})(\theta_0) = 0$ (mixture regularizer at its floor), but $\nabla_\theta \sum_r \pi_r S(P_r)(\theta_0) \neq 0$ generically, since $\theta_0$ is not a critical point of that term. Hence $\nabla_\theta\bigl[\mathcal{L}_{\mathrm{pred}} + \lambda \sum_r \pi_r S(P_r)\bigr](\theta_0) = \lambda\, \nabla_\theta \sum_r \pi_r S(P_r)(\theta_0) \neq 0$.
+
+\emph{Part 3.} As $\lambda \to \infty$ the regularizer dominates: any minimizer sequence of the biased objective must drive $\sum_r \pi_r S(P_r) \to 0$ (else the objective is bounded below by a competitor that does), which by Lemma~\ref{lem:scatter} forces $\Sigma_B \to 0$. For the representative objective, the regularizer floor is compatible with any $\Sigma_B \preceq I$; among those, whenever $\mathcal{L}_{\mathrm{pred}}$ is strictly decreasing in between-regime separation (Proposition~\ref{prop:hbound}), the minimizer selects $\Sigma_B \succ 0$. \qed
+
+\subsection*{D.3 The two-state cycle as a special case}
+
+\begin{corollary}[Two-state cycle]
+\label{cor:twostate}
+For a deterministic two-state cycle with $R = 2$ point-mass regimes ($C_r = 0$), $\Sigma_B = \pi_A \pi_B (\mu_A - \mu_B)(\mu_A - \mu_B)^\top$, and the biased objective drives $\mu_A, \mu_B \to 0$, collapsing both regimes to the origin at zero prediction loss but zero decodability. The representative objective preserves a nonzero symmetric separation $\mu_A = -\mu_B \neq 0$.
+\end{corollary}
+
+\begin{proof}
+Let $x_A = \mu_A$, $x_B = \mu_B$ be two distinct observations, $z_t = U x_t$ a linear invertible encoder, and $h_t = z_t$. A homogeneous batch contains only $z_A$ or only $z_B$, with empirical distribution $\delta_{z_A}$ or $\delta_{z_B}$. The Epps--Pulley statistic for a point mass at $u$ is increasing in $\|u\|$ (D.4), so its gradient with respect to $z_r$ points radially outward and the regularizer update $z_r \leftarrow z_r - \eta \lambda \nabla_{z_r} S(\delta_{z_r})$ decreases $\|z_r\|$. The prediction loss for the deterministic cycle with $W$ satisfying $W z_A = z_B$, $W z_B = z_A$ is zero, and it remains zero as $z_A, z_B \to 0$ (since $W \cdot 0 = 0$); thus the origin is a stationary point of the combined loss with $\Sigma_B = 0$. Under a representative batch $\frac12 \delta_{z_A} + \frac12 \delta_{z_B}$ projected onto any direction $v$, the statistic $S\bigl(\frac12 \delta_u + \frac12 \delta_{-u}\bigr)$ with $u = v^\top z_A$ is maximized (most non-Gaussian) as $u \to 0$ and has an interior minimizer $u^* > 0$ --- for the Gaussian weight the closed form gives $u^* = \sqrt{\tfrac67 \ln 2}$ --- so the symmetric configuration $z_A = -z_B$ with $\|z_A\| = u^*$ is a stable equilibrium: separation is preserved.
+\end{proof}
+
+\subsection*{D.4 Behavior of Epps--Pulley under a mean shift}
+
+Consider a one-dimensional projection $Y = v^\top z$ with law $P_0 * \delta_a$, i.e.\ a fixed centered shape $P_0$ shifted by $a = v^\top \mu$. Writing $\varphi_0$ for the characteristic function of $P_0$ and $\gamma(t) = e^{-t^2/2}$ for the standard-normal characteristic function, and using the Gaussian weight $w(t) = e^{-t^2/2}$ (matching the implementation), the projected statistic is
+\[
+g(a) = \int w(t) \bigl| e^{ita} \varphi_0(t) - \gamma(t) \bigr|^2 dt = C - 2\int w(t)\gamma(t)\bigl[\cos(ta)\,\mathrm{Re}\,\varphi_0(t) - \sin(ta)\,\mathrm{Im}\,\varphi_0(t)\bigr]\,dt,
+\]
+where $C = \int w\,(|\varphi_0|^2 + \gamma^2)\,dt$ is independent of $a$.
+
+\textbf{Point-mass shape} ($P_0 = \delta_0$, $\varphi_0 \equiv 1$). Then $g'(a) = 2\int w(t)\gamma(t)\,t \sin(ta)\,dt = \sqrt{\pi}\, a\, e^{-a^2/4} > 0$ for $a > 0$, using $\int_{-\infty}^{\infty} e^{-t^2} t \sin(at)\,dt = \tfrac{\sqrt{\pi}}{2}\, a\, e^{-a^2/4}$. So $S$ is strictly increasing in $\|u\|$ for a point mass, justifying the monotonicity invoked in D.3 and recovering the classical claim.
+
+\textbf{General symmetric shape} ($\mathrm{Im}\,\varphi_0 = 0$). Here $g'(0) = 0$ but the curvature is
+\[
+g''(0) = 2\int w(t)\gamma(t)\,t^2\,\mathrm{Re}\,\varphi_0(t)\,dt = 2\sqrt{\pi}\,\mathbb{E}_{Y \sim P_0}\Bigl[e^{-Y^2/4}\Bigl(\tfrac12 - \tfrac{Y^2}{4}\Bigr)\Bigr],
+\]
+using $\int e^{-t^2} t^2 \cos(ty)\,dt = \sqrt{\pi}\, e^{-y^2/4}\bigl(\tfrac12 - \tfrac{y^2}{4}\bigr)$. This is negative whenever $P_0$ places enough mass at $|Y| > \sqrt{2}$, so $\mu = 0$ is a local \emph{maximum} of the mean functional and a small mean shift decreases $S$. The endpoints are nonetheless ordered: by Riemann--Lebesgue the cross term vanishes as $a \to \infty$, giving $g(\infty) - g(0) = 2\int w\gamma\,\mathrm{Re}\,\varphi_0\,dt = 2\sqrt{\pi}\,\mathbb{E}[e^{-Y^2/4}] > 0$. Thus large separations always carry higher $S$ than the centered configuration, but the dependence is not monotone in general. This is why Proposition~\ref{prop:scattercollapse} is proved through minimizer characterization rather than a pointwise gradient-sign argument on $\|\mu_r\|$. \qed
+
+\section{Forecasting Lower Bound under History Overlap}
+\label{app:hbound}
+
+\begin{proof}[Proof of Proposition~\ref{prop:hbound}]
+Let $h_A$ and $h_B$ be two context vectors whose associated next-step latent means are $\mu_A$ and $\mu_B$, with $\delta = \|\mu_A - \mu_B\|$. Let $W$ be a linear predictor with operator norm bounded by $M$: $\|Wh\| \le M\|h\|$ for all $h$. Suppose $\|h_A - h_B\| \le \epsilon$. Then $\|Wh_A - Wh_B\| \le M\epsilon$, so for predictions $\hat{z}_A = Wh_A$, $\hat{z}_B = Wh_B$ we have $\|\hat{z}_A - \hat{z}_B\| \le M\epsilon$. By the triangle inequality,
+\[
+\|\hat{z}_A - \mu_A\| + \|\hat{z}_B - \mu_B\| \;\ge\; \|\mu_A - \mu_B\| - \|\hat{z}_A - \hat{z}_B\| \;\ge\; \delta - M\epsilon .
+\]
+Therefore at least one of the two prediction errors is at least $(\delta - M\epsilon)/2$, and squaring yields
+\[
+\max\bigl(\|\hat{z}_A - \mu_A\|^2,\; \|\hat{z}_B - \mu_B\|^2\bigr) \;\ge\; \tfrac14(\delta - M\epsilon)^2,
+\]
+which is non-vacuous whenever $\delta > M\epsilon$. If $h_A = h_B$ then $\epsilon = 0$ and the bound becomes $\delta^2/4$.
+\end{proof}
+
+\bibliographystyle{plainnat}
+\bibliography{main}
+
+\end{document}
+
