@@ -52,7 +52,7 @@ The total loss is $\mathcal{L} = \mathcal{L}_{\text{pred}} + \lambda \cdot \math
 
 ### 2.2 Ideal Terminal State Existence
 
-We first establish that the three desirable properties—(i) marginal Gaussianity of $z_t$, (ii) recoverability of $x_t$ from $z_t$, and (iii) linear predictability of $z_{t+1}$ from $h_t$—are not inherently incompatible. Suppose there exists a latent representation $\tilde{z}_t$ that is a sufficient statistic for $x_t$ and for which the conditional expectation $\mathbb{E}[\tilde{z}_{t+1} \mid \tilde{z}_{1:t}]$ can be approximated by some (possibly nonlinear) context model. Let $F$ be an invertible, differentiable map that pushes the marginal of $\tilde{z}_t$ to $\mathcal{N}(0,I)$ (e.g., a normalizing flow). Then $z_t = F(\tilde{z}_t)$ satisfies marginal Gaussianity by construction and invertibility via $F^{-1}$. The context network can first invert $F$ on the history, apply the original predictor, and then map the result forward with $F$; a subsequent linear readout can therefore produce the correct $z_{t+1}$. Hence, for any sufficiently regular DGP, there exists an encoder and context network that simultaneously achieve all three properties. Therefore, any failure to reach such a state during training must arise from the dynamics of optimization—not from an inherent incompatibility with SIGReg.
+We first establish that the three desirable properties—(i) marginal Gaussianity of $z_t$, (ii) recoverability of $x_t$ from $z_t$, and (iii) linear predictability of $z_{t+1}$ from $h_t$—are not inherently incompatible. Suppose there exists a latent representation $\tilde{z}_t$ that is a sufficient statistic for $x_t$ and for which the conditional expectation $\mathbb{E}[\tilde{z}_{t+1} \mid \tilde{z}_{1:t}]$ can be approximated by some (possibly nonlinear) context model. Let $F$ be an invertible, differentiable map that pushes the marginal of $\tilde{z}_t$ to $\mathcal{N}(0,I)$ (e.g., a normalizing flow). Then $z_t = F(\tilde{z}_t)$ satisfies marginal Gaussianity by construction and invertibility via $F^{-1}$. The context network can first invert $F$ on the history, apply the original predictor, and then map the result forward with $F$; a subsequent linear readout can therefore produce the correct $z_{t+1}$. Hence, for any sufficiently regular DGP, there exists an encoder and context network that simultaneously achieve all three properties. Therefore, any failure to reach such a state during training must arise from the dynamics of optimization—not from an inherent incompatibility with SIGReg. The formal construction is given in Appendix A.
 
 ### 2.3 Batch Composition and Two Statistical Effects
 
@@ -74,7 +74,7 @@ $$
   S\Bigl( \sum_{r=1}^K \pi_r P_r \Bigr).
 $$
 
-  Since $S$ is nonlinear, these are generally not equal. This bias is the core of the problem.
+  Since $S$ is nonlinear, these are generally not equal. This bias is the core of the problem; Appendix B formalizes the bias–variance decomposition and shows that the gap $\Delta S$ does not vanish with batch size or batch count.
 
 ---
 
@@ -113,7 +113,7 @@ Superposition is characterized by a small between‑regime scatter relative to w
 
 **Lemma 1** (Mean‑shift monotonicity). *Let $S$ be the Epps–Pulley criterion. For any centered distribution $P_0$ with mean $0$, the function $\mu \mapsto S(T_\mu P_0)$ is nondecreasing in $\|\mu\|$, with its minimum at $\mu = 0$.*
 
-*Proof sketch.* The Epps–Pulley statistic is a weighted $L^2$ distance between the empirical characteristic function and the Gaussian characteristic function $e^{-\frac12 \|t\|^2}$. Shifting the distribution by $\mu$ multiplies its characteristic function by $e^{i \mu^\top t}$, which adds an oscillatory component. For fixed centered shape, increasing $\|\mu\|$ makes the characteristic function deviate further from the Gaussian, hence increasing the statistic. A detailed proof is in Appendix A.
+*Proof sketch.* The Epps–Pulley statistic is a weighted $L^2$ distance between the empirical characteristic function and the Gaussian characteristic function $e^{-\frac12 \|t\|^2}$. Shifting the distribution by $\mu$ multiplies its characteristic function by $e^{i \mu^\top t}$, which adds an oscillatory component. For fixed centered shape, increasing $\|\mu\|$ makes the characteristic function deviate further from the Gaussian, hence increasing the statistic. A detailed proof is in Appendix C.
 
 ### 3.3 Representativeness Bias Persists Under Data Parallelism
 
@@ -126,13 +126,13 @@ $$
 \nabla_\theta \bar{R}(\theta),
 $$
 
-which is different from $\nabla_\theta S(\sum_r \pi_r P_r)$. Hence the bias persists as $M \to \infty$. See Appendix B for a formal statement.
+which is different from $\nabla_\theta S(\sum_r \pi_r P_r)$. Hence the bias persists as $M \to \infty$. See Appendix D for a formal statement.
 
 ### 3.4 Biased Regularizer Shrinks Between‑Regime Scatter
 
 Under homogeneous batches, each local batch contains samples predominantly from one regime. By Lemma 1, SIGReg penalizes the regime‑specific distribution more as its mean moves away from zero. Therefore, the gradient acts to shrink each regime’s mean toward the origin, reducing $V_B$. In the extreme case of point‑mass regimes, the homogeneous regularizer drives $\mu_s \to 0$ for all $s$, collapsing $V_B$ to zero.
 
-In contrast, a representative batch contains the mixture $\sum_r \pi_r P_r$. For a symmetric two‑point distribution $0.5 \delta_{\mu} + 0.5 \delta_{-\mu}$, the Epps–Pulley statistic attains a minimum at some $\mu^* > 0$, not at $\mu=0$. Thus the representative regularizer preserves a nonzero $V_B$.
+In contrast, a representative batch contains the mixture $\sum_r \pi_r P_r$. For a symmetric two‑point distribution $0.5 \delta_{\mu} + 0.5 \delta_{-\mu}$, the Epps–Pulley statistic attains a minimum at some $\mu^* > 0$, not at $\mu=0$ (Appendix F). Thus the representative regularizer preserves a nonzero $V_B$.
 
 ### 3.5 Forecasting Lower Bound from Superposition
 
@@ -150,9 +150,9 @@ $$
 
 *where $\varepsilon$ is irreducible regime‑conditional noise.*
 
-*Proof.* Decompose the expected squared error; the first term is unavoidable, the second is the cost of not linearly recovering the regime‑specific future mean. Under complete superposition ($\mu_{s_t}^{\text{future}}$ independent of $h_t$), $\epsilon^2_{\mathrm{lin}} = \sum_s \pi_s \|\mu_s^{\text{future}} - \bar{\mu}^{\text{future}}\|^2 = V_B^{\text{future}}$. The full proof is in Appendix C.
+*Proof.* Decompose the expected squared error; the first term is unavoidable, the second is the cost of not linearly recovering the regime‑specific future mean. Under complete superposition ($\mu_{s_t}^{\text{future}}$ independent of $h_t$), $\epsilon^2_{\mathrm{lin}} = \sum_s \pi_s \|\mu_s^{\text{future}} - \bar{\mu}^{\text{future}}\|^2 = V_B^{\text{future}}$. The full proof is in Appendix E.
 
-Thus, reducing between‑regime scatter in $h_t$ directly raises the minimal forecasting error.
+Thus, reducing between‑regime scatter in $h_t$ directly raises the minimal forecasting error. A norm‑based variant of this bound (Proposition 1 in Appendix E) shows the same conclusion from history‑embedding overlap alone: if two regimes' context vectors are within $\epsilon$ but their future means differ by $\delta$, some input incurs error at least $\frac{1}{4}(\delta - M\epsilon)^2$ for any predictor of norm at most $M$.
 
 ### 3.6 Summary of Causal Chain
 
@@ -162,7 +162,7 @@ $$
 \text{Non‑representative batches} \;\to\; \text{Biased SIGReg gradient} \;\to\; \text{Shrinkage of regime means} \;\to\; V_B \downarrow \;\to\; J \downarrow \;\to\; \text{Linear forecasting error} \uparrow.
 $$
 
-The first two steps are proven by Lemma 2 and Lemma 1; the last two by Theorem 1 and the LDA decomposition. The middle step (that biased gradients actually lead to shrinkage) is demonstrated analytically in the two‑state deterministic example (Appendix D) and empirically in Section 5.
+The first two steps are proven by Lemma 2 and Lemma 1; the last two by Theorem 1 and the LDA decomposition. The middle step (that biased gradients actually lead to shrinkage) is demonstrated analytically in the two‑state deterministic example (Appendix F) and empirically in Section 5.
 
 ---
 
@@ -173,10 +173,10 @@ The first two steps are proven by Lemma 2 and Lemma 1; the last two by Theorem 1
 The LDA decomposition shows that harmful batch composition reduces the total variance $V_T$ of the batch relative to the dataset, primarily because between‑regime scatter $V_B$ is missing. A natural, lightweight probe is therefore the difference between the average variance of the batch embeddings and the variance of the full dataset (or a large representative sample):
 
 $$
-\Delta = \left| \overline{\operatorname{Var}}(B) - \operatorname{Var}(D) \right|,
+\Delta = \left| \overline{\mathrm{Var}}(B) - \mathrm{Var}(D) \right|,
 $$
 
-where $\overline{\operatorname{Var}}(B)$ is computed over several batches from the same strategy, and $\operatorname{Var}(D)$ is the variance over a large, shuffled reference set. This probe is attractive because:
+where $\overline{\mathrm{Var}}(B)$ is computed over several batches from the same strategy, and $\mathrm{Var}(D)$ is the variance over a large, shuffled reference set. This probe is attractive because:
 
 - It directly measures the missing spread that SIGReg over‑penalizes.
 - Variance is robust and easy to estimate even with small batches.
@@ -238,7 +238,47 @@ We have shown that the failure of SIGReg on temporally correlated data stems pri
 
 ## Appendix
 
-### A. Proof of Mean‑Shift Monotonicity Lemma
+### A. Existence of an Ideal Terminal State
+
+*Proof of the claim in §2.2.* Let $\tilde{z}_t \in \mathbb{R}^d$ be a sufficient statistic for $x_t$ with atomless marginal $P_{\tilde{z}}$. By the probability‑integral transform (or the Rosenblatt transform in the multivariate case), there exists an invertible differentiable map $F : \mathbb{R}^d \to \mathbb{R}^d$ such that $F(\tilde{z}_t) \sim \mathcal{N}(0,I)$. Define the encoder $f_\theta$ to first compute $\tilde{z}_t$ and then apply $F$, i.e., $z_t = F(\tilde{z}_t)$. Then property (i), marginal Gaussianity, holds by construction.
+
+Since $F$ is invertible, $F^{-1}(z_t) = \tilde{z}_t$, and $\tilde{z}_t$ is sufficient for $x_t$; thus there exists a function $d$ such that $d(\tilde{z}_t) = x_t$ (almost everywhere). The decoder $\hat{x}_t = d(F^{-1}(z_t))$ achieves exact reconstruction, giving property (ii).
+
+For property (iii), let $m(\tilde{z}_{1:t}) = \mathbb{E}[\tilde{z}_{t+1} \mid \tilde{z}_{1:t}]$ be the optimal predictor in $\tilde{z}$‑space. Define the context network $g_\phi$ to first invert $F$ on each element of the history, compute $m$, and then apply $F$ to the result; place this value in a fixed subset of the coordinates of $h_t$, with zeros elsewhere. Let $W$ be the linear projection onto those coordinates. Then $W h_t = F(m(F^{-1}(z_{1:t})))$, and for any sufficiently expressive approximation of $m$, the prediction error $\|W h_t - z_{t+1}\|^2$ can be made arbitrarily small. This establishes property (iii). QED.
+
+*Two caveats delimit this argument.* When the underlying structure is genuinely discrete (an atomic marginal), no continuous invertible push‑forward to a Gaussian exists, and Gaussianization necessarily distorts cluster geometry; we treat that structural incompatibility as a separate phenomenon and focus on the regime where a compatible configuration exists. Second, existence says nothing about whether gradient descent *finds* this state—which is where batch composition enters.
+
+### B. Effective Sample Size versus Representativeness
+
+Let $P_r$ be the latent distribution of regime $r$, with weights $\pi_r$, and let $P = \sum_r \pi_r P_r$. Let $S(\cdot)$ be the Epps–Pulley statistic, a nonlinear functional of the empirical distribution.
+
+**Representative batches.** For a representative batch of size $N$, the empirical distribution $\hat{P}_N$ satisfies $\mathbb{E}[\hat{P}_N] = P$ under i.i.d. sampling. By the standard theory of U‑statistics, $S(\hat{P}_N)$ converges to $S(P)$ as $N \to \infty$ at a rate determined by the effective sample size; in particular,
+
+$$
+\mathbb{E}[S(\hat{P}_N)] = S(P) + O(N_{\mathrm{eff}}^{-1}).
+$$
+
+**Homogeneous batches.** Now suppose each batch is drawn from a single regime $r$, with regimes selected with probability $\pi_r$; let $q$ denote the distribution over such homogeneous batches. For fixed $\theta$, the expected statistic is
+
+$$
+\mathbb{E}_{B \sim q}[S(\hat{P}_B)] = \sum_r \pi_r \, \mathbb{E}_{\hat{P}_B \sim P_r}[S(\hat{P}_B)].
+$$
+
+As the per‑batch effective size grows, the inner expectation converges to $S(P_r)$, so
+
+$$
+\lim_{N_{\mathrm{eff}} \to \infty} \mathbb{E}_{B \sim q}[S(\hat{P}_B)] = \sum_r \pi_r S(P_r).
+$$
+
+Because $S$ is nonlinear, this is generally not equal to $S\bigl(\sum_r \pi_r P_r\bigr)$. For the Epps–Pulley statistic, the nonlinearity arises from the weighted integral of the squared difference between the empirical and Gaussian characteristic functions, which does not commute with mixture averaging. The representativeness bias is the difference
+
+$$
+\Delta S = S\Bigl( \sum_r \pi_r P_r \Bigr) - \sum_r \pi_r S(P_r) \ne 0,
+$$
+
+which does not vanish as the batch size or the number of batches increases. QED.
+
+### C. Proof of Mean‑Shift Monotonicity Lemma
 
 Let $S(P)$ be the Epps–Pulley statistic. For a probability measure $P$ on $\mathbb{R}^d$, define
 
@@ -266,25 +306,31 @@ $$
 
 Because $\phi_{P_0}(t)$ is the characteristic function of a centered distribution, it is real and even if $P_0$ is symmetric; more generally, its real part is even. The oscillation $e^{i\,\mu^\top t}$ reduces the integral as $\|\mu\|$ grows (by the Riemann–Lebesgue lemma applied to the weighted $L^2$ norm). Hence the negative cross term becomes less negative, increasing $S(P_\mu)$. The minimum occurs at $\mu = 0$. QED.
 
-### B. Proof of Representativeness Bias Persistence
+### D. Proof of Representativeness Bias Persistence
 
-Let $S$ be a nonlinear functional on probability measures. Consider the population objective $R(\theta) = S(\sum_r \pi_r P_r(\theta))$ and the homogeneous batch objective $\bar{R}(\theta) = \sum_r \pi_r S(P_r(\theta))$. Since $S$ is nonlinear, generally $\bar{R}(\theta) \ne R(\theta)$. The gradients differ:
-
-$$
-\nabla_\theta \bar{R}(\theta) = \sum_r \pi_r \nabla_\theta S(P_r(\theta)) \ne \nabla_\theta S\Bigl(\sum_r \pi_r P_r(\theta)\Bigr).
-$$
-
-Averaging gradients over $M$ homogeneous batches yields
+Let $\theta$ denote the encoder parameters and let $S_B(\theta) = S(\hat{P}_B(\theta))$ be the regularizer loss for a local batch $B$. Under homogeneous batch construction, each local batch $B_i$ is drawn from a single regime $r_i$, with regime $r$ selected with probability $\pi_r$. Data‑parallel training (or gradient accumulation over sequential micro‑batches) averages the local gradients over $M$ batches:
 
 $$
-\frac{1}{M}\sum_{i=1}^M \nabla_\theta S(\hat{P}_{B_i}) \;\to\; \sum_r \pi_r \nabla_\theta S(P_r(\theta)) = \nabla_\theta \bar{R}(\theta),
+g_M(\theta) = \frac{1}{M}\sum_{i=1}^M \nabla_\theta S_{B_i}(\theta).
 $$
 
-which remains different from $\nabla_\theta R(\theta)$. Therefore the bias persists under data parallel, gradient accumulation, and multiple SGD steps. QED.
+As $M \to \infty$, by the law of large numbers,
 
-### C. Proof of Forecasting Lower Bound
+$$
+g_M(\theta) \;\to\; \mathbb{E}_{B \sim q}[\nabla_\theta S_B(\theta)] = \nabla_\theta \, \mathbb{E}_{B \sim q}[S_B(\theta)] = \nabla_\theta \sum_r \pi_r S(P_r(\theta)) = \nabla_\theta \bar{R}(\theta),
+$$
 
-Assume $z_{t+1} = \mu_{s_t}^{\text{future}} + \varepsilon_{t+1}$ with $\mathbb{E}[\varepsilon_{t+1}|s_{1:t+1}]=0$. The linear forecasting loss is
+assuming the interchange of gradient and expectation is valid (standard regularity conditions). The ideal gradient under representative batches would be
+
+$$
+\nabla_\theta R(\theta) = \nabla_\theta S\Bigl(\sum_r \pi_r P_r(\theta)\Bigr).
+$$
+
+Because $S$ is nonlinear, $\bar{R}(\theta) = \sum_r \pi_r S(P_r(\theta)) \ne S\bigl(\sum_r \pi_r P_r(\theta)\bigr) = R(\theta)$ in general (Appendix B), so the two gradients differ. The difference is independent of $M$: increasing the number of workers, accumulation steps, or SGD iterations only reduces the variance of the gradient estimator, not its biased expectation. QED.
+
+### E. Proof of Forecasting Lower Bound
+
+*Proof of Theorem 1.* Assume $z_{t+1} = \mu_{s_t}^{\text{future}} + \varepsilon_{t+1}$ with $\mathbb{E}[\varepsilon_{t+1}|s_{1:t+1}]=0$. The linear forecasting loss is
 
 $$
 \mathbb{E}\|z_{t+1} - (W h_t + b)\|^2
@@ -294,9 +340,41 @@ $$
 
 because cross terms vanish. The second term is the linear approximation error to the regime‑conditional future mean. If $h_t$ contains no regime information linearly, the best linear predictor is the unconditional mean $\bar{\mu}^{\text{future}}$, and the error is $\sum_s \pi_s \|\mu_s^{\text{future}} - \bar{\mu}^{\text{future}}\|^2 = V_B^{\text{future}}$. Hence the lower bound. QED.
 
-### D. Two‑State Deterministic Cycle Example
+**A norm‑based variant.** The following proposition gives the same conclusion without an expectation decomposition, showing that overlap of the *history* embeddings directly limits any bounded‑norm linear predictor.
 
-Let states $A,B$ with $A \to B$, $B \to A$, observations $\mu_A,\mu_B$, linear encoder $z_t = U x_t$, identity context $h_t = z_t$, predictor $W h_t$. A symmetric solution $z_A = u, z_B = -u$ yields perfect prediction with $W=-I$. Under homogeneous batches (single state), SIGReg sees point masses $\delta_{z_A}$ and $\delta_{z_B}$. By Lemma 1, it pushes both toward origin. Hence $u \to 0$. The representation collapses to $z_A = z_B = 0$, destroying decodability. Under representative batches, the mixture $0.5\delta_u + 0.5\delta_{-u}$ has a nonzero optimal $u$. Therefore homogeneous batches induce superposition and degrade forecasting. QED.
+**Proposition 1** (Forecasting lower bound under history overlap). *Let $h_A$ and $h_B$ be context vectors for two histories with distinct future conditional means $\mu_A \ne \mu_B$. Suppose $\|h_A - h_B\| \le \epsilon$. Then for any linear predictor $W$ with operator norm bounded by $M$, there exist inputs for which the prediction error is at least $\frac{1}{4}\bigl(\|\mu_A - \mu_B\| - M\epsilon\bigr)^2$. In particular, if $h_A = h_B$, no linear predictor can distinguish the two futures.*
+
+*Proof.* Let $\delta = \|\mu_A - \mu_B\|$. Since $\|W h\| \le M\|h\|$ for all $h$,
+
+$$
+\|\hat{z}_A - \hat{z}_B\| = \|W h_A - W h_B\| \le M \epsilon.
+$$
+
+By the triangle inequality,
+
+$$
+\|\hat{z}_A - \mu_A\| + \|\hat{z}_B - \mu_B\| \;\ge\; \|\mu_A - \mu_B\| - \|\hat{z}_A - \hat{z}_B\| \;\ge\; \delta - M \epsilon.
+$$
+
+Therefore at least one of the two prediction errors is at least $(\delta - M\epsilon)/2$; squaring yields
+
+$$
+\max\bigl(\|\hat{z}_A - \mu_A\|^2,\ \|\hat{z}_B - \mu_B\|^2\bigr) \;\ge\; \tfrac{1}{4}\,(\delta - M\epsilon)^2.
+$$
+
+If $h_A = h_B$, then $M\epsilon = 0$ and the bound becomes $\delta^2/4$. QED.
+
+### F. Two‑State Deterministic Cycle Example
+
+Let states $A,B$ with transitions $A \to B$, $B \to A$, and observations $x_A = \mu_A$, $x_B = \mu_B$. Take a linear encoder $z_t = U x_t$ with $U \in \mathbb{R}^{d \times d}$ invertible, identity context $h_t = z_t$, and linear predictor $W h_t$. The two latent representations are $z_A = U\mu_A$ and $z_B = U\mu_B$. A symmetric solution $z_A = u$, $z_B = -u$ yields perfect prediction with $W = -I$.
+
+**Homogeneous batch gradient.** A homogeneous batch contains either only $z_A$ or only $z_B$, so the empirical distribution is $\hat{P}_A = \delta_{z_A}$ or $\hat{P}_B = \delta_{z_B}$. By Lemma 1, the Epps–Pulley statistic of a point mass at $u$ is an increasing function of $\|u\|$ (for the multivariate version applied to 1D projections, the same monotonicity holds after projection). Hence the gradient of $S(\delta_{z_A})$ with respect to $z_A$ is proportional to $z_A$, and the regularizer update $z_A \leftarrow z_A - \eta \lambda \nabla_{z_A} S(\delta_{z_A})$ strictly decreases $\|z_A\|$; symmetrically for $z_B$.
+
+The prediction loss is zero whenever $W z_A = z_B$ and $W z_B = z_A$. As $z_A, z_B \to 0$, the prediction loss remains zero (since $W \cdot 0 = 0$) while the regularizer gradient continues to push both points toward the origin. Thus $z_A = z_B = 0$ is a stationary point of the combined loss: zero prediction error but complete loss of linear decodability of the regime.
+
+**Representative batch equilibrium.** Now consider a representative batch containing both states in equal proportion: $\hat{P} = 0.5\,\delta_{z_A} + 0.5\,\delta_{z_B}$. Projected onto any 1D direction $v$ with $u = v^\top z_A$, the statistic is $S(0.5\,\delta_u + 0.5\,\delta_{-u})$. As $u \to 0$, the distribution collapses to a point mass, which is maximally non‑Gaussian under the Epps–Pulley criterion; as $u \to \infty$, the two point masses are infinitely separated, also departing from Gaussianity. Hence there is an intermediate minimizer $u^* > 0$. The symmetric configuration $z_A = -z_B$ with $\|z_A\| = u^*$ is therefore a stable equilibrium of the regularizer rather than a collapse point, and the prediction loss reinforces it by requiring $z_A = -z_B$.
+
+Therefore homogeneous batches induce superposition and degrade forecasting, while representative batches preserve a nonzero separation. QED.
 
 ---
 
