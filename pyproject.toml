@@ -6,6 +6,8 @@ requires-python = ">=3.10"
 authors = [{ name = "guest400123064", email = "wangy49@engineering.upenn.edu" }]
 packages = [{ include = "batcomp", from = "src" }]
 dependencies = [
+    "datasets>=5.0.1",
+    "huggingface-hub>=1.27.0",
     "just-config-mixin>=0.1.1",
     "tensorblob>=0.3.0",
     "tensorboard>=2.21.0",
