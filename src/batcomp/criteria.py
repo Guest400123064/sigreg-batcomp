@@ -4,6 +4,11 @@ import torch
 
 
 def var_diff(bs, ref):
+    r"""Variance discrepancy probe.
+
+    Compare the per-batch variance against larger IID sample variance,
+    and the take the average over multiple batches.
+    """
     return torch.abs(bs.var(-2).mean(-1) - ref.var(0).mean()).mean()
 
 
