@@ -4,7 +4,7 @@ import torch
 
 
 def var_diff(bs, ref):
-    return torch.abs(bs.var(1).mean(-1).mean() - ref.var(0).mean())
+    return torch.abs(bs.var(-2).mean(-1) - ref.var(0).mean()).mean()
 
 
 def sigreg(z, num_slices=64, num_knots=17, t_max=5):
