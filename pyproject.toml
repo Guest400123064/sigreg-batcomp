@@ -11,6 +11,7 @@ dependencies = [
     "just-config-mixin>=0.1.1",
     "tensorblob>=0.3.0",
     "tensorboard>=2.21.0",
+    "torch<2.8.0",
     "trackio>=0.34.0",
     "x-transformers>=2.25.4",
 ]

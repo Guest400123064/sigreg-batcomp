@@ -60,7 +60,7 @@ class SimpleModel(nn.Module, ConfigMixin):
             heads=num_attention_heads,
             use_rmsnorm=True,
             pre_norm=True,
-            ff_glue=True,
+            ff_glu=True,
             ff_mult=2,
         )
         self.lm_head = nn.Linear(hidden_size, hidden_size)
