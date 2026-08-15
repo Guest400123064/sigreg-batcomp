@@ -16,6 +16,9 @@ dependencies = [
     "x-transformers>=2.25.4",
 ]
 
+[project.scripts]
+batcomp = "batcomp.cli:main"
+
 [dependency-groups]
 dev = [
     "lancedb>=0.36.0",
@@ -27,6 +30,13 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.14.3",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
 
 [build-system]
 requires = ["hatchling"]
