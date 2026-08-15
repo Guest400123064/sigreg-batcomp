@@ -16,6 +16,9 @@ def get_logger(name, level=logging.INFO):
 
     logger.setLevel(level)
     logger.addHandler(handler)
+    # Each logger owns its handler; without this, records also propagate to
+    # ancestor loggers (e.g. ``batcomp.cli``) and print twice.
+    logger.propagate = False
 
     logger.debug(f"Logger <{name}> initialized with level <{level}>.")
 

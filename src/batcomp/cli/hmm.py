@@ -48,7 +48,10 @@ def make_chain(num_regimes, dwell, pi_alpha=None, rng=None):
         pi = torch.distributions.Dirichlet(torch.full((num_regimes,), pi_alpha)).sample(
             generator=rng
         )
-    return p_self * torch.eye(num_regimes) + (1 - p_self) * pi.expand(num_regimes, -1), pi
+    return (
+        p_self * torch.eye(num_regimes) + (1 - p_self) * pi.expand(num_regimes, -1),
+        pi,
+    )
 
 
 def sample_regime_chain(num_seqs, seq_len, trans, rng):
@@ -56,7 +59,9 @@ def sample_regime_chain(num_seqs, seq_len, trans, rng):
     num_regimes = trans.size(0)
     s = torch.empty(num_seqs, seq_len, dtype=torch.long)
     s[:, 0] = torch.multinomial(
-        torch.full((num_regimes,), 1.0 / num_regimes).expand(num_seqs, -1), 1, generator=rng
+        torch.full((num_regimes,), 1.0 / num_regimes).expand(num_seqs, -1),
+        1,
+        generator=rng,
     ).squeeze(1)
     for t in range(1, seq_len):
         cum = trans[s[:, t - 1]].cumsum(-1)
@@ -137,7 +142,9 @@ def make_ar1(
     """
     if isinstance(phi, (int, float)):
         phi = (float(phi),) * num_regimes
-    assert len(phi) == num_regimes, f"phi length {len(phi)} != num_regimes {num_regimes}"
+    assert len(phi) == num_regimes, (
+        f"phi length {len(phi)} != num_regimes {num_regimes}"
+    )
     phi = torch.as_tensor(phi, dtype=torch.float32)
     assert bool((phi.abs() < 1).all()), "|phi| < 1 required for stationarity"
 
@@ -204,7 +211,9 @@ class BatchSampler(Sampler):
 
     def __init__(self, ds, batch_size, steps, strategy, seed=0):
         if strategy == "contiguous" and ds.nw < batch_size:
-            raise ValueError(f"Need windows-per-chain >= batch_size, got {ds.nw} < {batch_size}")
+            raise ValueError(
+                f"Need windows-per-chain >= batch_size, got {ds.nw} < {batch_size}"
+            )
         self.ds, self.bs, self.steps, self.strategy = ds, batch_size, steps, strategy
         self.rng = torch.Generator().manual_seed(seed)
         # Pure-window indices grouped by regime label.
@@ -366,7 +375,10 @@ def train_strategy(args, strategy, data, init_state, device):
     # independent of each other but fixed across seeds.
     sseed = args.seed * 1000 + STRATEGIES.index(strategy)
     loader = DataLoader(
-        ds, batch_sampler=BatchSampler(ds, args.batch_size, args.steps, strategy, seed=sseed)
+        ds,
+        batch_sampler=BatchSampler(
+            ds, args.batch_size, args.steps, strategy, seed=sseed
+        ),
     )
 
     model = build_model(args, device)
@@ -429,7 +441,9 @@ def add_cmd(subparsers):
         help="synthetic HMM / AR(1) batch-composition experiments",
         description="SIGReg batch-composition experiments on synthetic DGPs.",
     )
-    p.add_argument("--project", type=str, default="batcomp-stage1", help="trackio project name")
+    p.add_argument(
+        "--project", type=str, default="batcomp-stage1", help="trackio project name"
+    )
     p.add_argument("--dgp", choices=["hmm", "ar1"], default="hmm")
     p.add_argument("--strategies", nargs="*", choices=STRATEGIES, default=STRATEGIES)
     p.add_argument("--seeds", type=int, nargs="*", default=[0, 1, 2])
@@ -464,8 +478,10 @@ def add_cmd(subparsers):
     p.add_argument("--ar-sigma", type=float, default=1.0, help="AR(1) innovation scale")
     p.add_argument("--obs-noise", type=float, default=0.0,
                    help="i.i.d. observation noise added on top of the latent")
-    p.add_argument("--bins", type=int, default=8,
-                   help="quantile bins of the latent used as analysis groups (ar1 only)")
+    p.add_argument(
+        "--bins", type=int, default=8,
+        help="quantile bins of the latent used as analysis groups (ar1 only)",
+    )
     p.set_defaults(func=run)
     return p
 
@@ -481,7 +497,8 @@ def run(args) -> int:
         x, s = data[0]
         cnt = torch.bincount(s.flatten(), minlength=args.num_regimes)
         runlen = s.numel() / (s[:, 1:] != s[:, :-1]).sum().item()
-        logger.info(f"[seed={seed}] realized pi={[round(v, 3) for v in (cnt / cnt.sum()).tolist()]} mean_runlen={runlen:.1f}")
+        pi_emp = [round(v, 3) for v in (cnt / cnt.sum()).tolist()]
+        logger.info(f"[seed={seed}] realized pi={pi_emp} mean_runlen={runlen:.1f}")
 
         # One random init per seed; every strategy trains an identical copy,
         # so batch composition is the only thing that changes.
@@ -490,8 +507,10 @@ def run(args) -> int:
 
         for strategy in args.strategies:
             logger.info(f"  [{strategy}]")
-            runs.append({"seed": seed, "strategy": strategy,
-                         "log": train_strategy(args, strategy, data, init_state, device)})
+            runs.append({
+                "seed": seed, "strategy": strategy,
+                "log": train_strategy(args, strategy, data, init_state, device),
+            })
 
     summary = {}
     for st in args.strategies:
@@ -507,15 +526,21 @@ def run(args) -> int:
 
     logger.info("\n[summary] final-step metrics across seeds (mean +/- std)")
     for st, row in summary.items():
-        logger.info(f"  {st:>15}: " + "  ".join(f"{k}={v['mean']:.4f}+-{v['std']:.4f}" for k, v in row.items()))
+        row_str = "  ".join(
+            f"{k}={v['mean']:.4f}+-{v['std']:.4f}" for k, v in row.items()
+        )
+        logger.info(f"  {st:>15}: {row_str}")
 
     if args.out:
+        payload = {"args": vars(args), "runs": runs, "summary": summary}
         with open(args.out, "w") as fs:
-            json.dump({"args": vars(args), "runs": runs, "summary": summary}, fs, indent=2)
+            json.dump(payload, fs, indent=2)
         logger.info(f"[saved] {args.out}")
 
     # Point the user at where trackio stored the runs.
-    trackio_dir = os.environ.get("TRACKIO_DIR") or os.path.expanduser("~/.cache/huggingface/trackio")
+    trackio_dir = os.environ.get("TRACKIO_DIR") or os.path.expanduser(
+        "~/.cache/huggingface/trackio"
+    )
     logger.info(f"[trackio] project '{args.project}' -> {trackio_dir} "
                 f"(dashboard: `trackio show --project {args.project}`)")
     return 0
@@ -524,9 +549,15 @@ def run(args) -> int:
 def build_data(args):
     if args.dgp == "hmm":
         x, s, _ = make_hmm(
-            num_regimes=args.num_regimes, dwell=args.dwell, sep=args.sep, sigma=args.sigma,
-            pi_alpha=args.pi_alpha, num_seqs=args.num_seqs, seq_len=args.seq_len,
-            d_obs=args.d_obs, seed=args.seed,
+            num_regimes=args.num_regimes,
+            dwell=args.dwell,
+            sep=args.sep,
+            sigma=args.sigma,
+            pi_alpha=args.pi_alpha,
+            num_seqs=args.num_seqs,
+            seq_len=args.seq_len,
+            d_obs=args.d_obs,
+            seed=args.seed,
         )
         args.num_groups = args.num_regimes
         s_analysis = s
@@ -535,7 +566,9 @@ def build_data(args):
         if len(phi) == 1:
             phi = phi * args.num_regimes
         if len(phi) != args.num_regimes:
-            raise ValueError(f"--phi has {len(phi)} values but --num-regimes={args.num_regimes}")
+            raise ValueError(
+                f"--phi has {len(phi)} values but --num-regimes={args.num_regimes}"
+            )
         x, s, _ = make_ar1(
             num_regimes=args.num_regimes, dwell=args.dwell, phi=phi, sep=args.sep,
             ar_sigma=args.ar_sigma, obs_noise=args.obs_noise,
@@ -545,4 +578,7 @@ def build_data(args):
         # The analysis grouping is the continuous latent binned into quantiles;
         # regime ids remain available for the sampler (pure-window batching).
         s_analysis = bin_labels(x.squeeze(-1), args.bins)
-    return (x[: -args.eval_seqs], s[: -args.eval_seqs]), (x[-args.eval_seqs :], s_analysis[-args.eval_seqs :])
+    return (
+        (x[: -args.eval_seqs], s[: -args.eval_seqs]),
+        (x[-args.eval_seqs :], s_analysis[-args.eval_seqs :]),
+    )

@@ -16,7 +16,6 @@ from batcomp.cli.hmm import (
     within_scatter,
 )
 
-
 # --- data generation -------------------------------------------------------
 
 
@@ -53,14 +52,19 @@ def test_make_ar1_autocorrelation():
                          num_seqs=2, seq_len=20000, seed=0)
     assert abs(phi.item() - 0.7) < 1e-6
     x = x.squeeze(-1)
-    lag1 = ((x[:, 1:] - x[:, :-1].mean(-1, keepdim=True)) * (x[:, :-1] - x[:, :-1].mean(-1, keepdim=True))).mean()
+    lag1 = (
+        (x[:, 1:] - x[:, :-1].mean(-1, keepdim=True))
+        * (x[:, :-1] - x[:, :-1].mean(-1, keepdim=True))
+    ).mean()
     var = x.var(-1).mean()
     assert abs(lag1.item() / var.item() - 0.7) < 0.02
     assert abs(var.item() - 1.0 / (1 - 0.7**2)) < 0.1
 
 
 def test_make_ar1_phi_scalar_broadcast():
-    _, _, phi = make_ar1(num_regimes=3, dwell=50.0, phi=0.5, num_seqs=2, seq_len=64, seed=0)
+    _, _, phi = make_ar1(
+        num_regimes=3, dwell=50.0, phi=0.5, num_seqs=2, seq_len=64, seed=0
+    )
     torch.testing.assert_close(phi, torch.full((3,), 0.5))
 
 
@@ -101,7 +105,8 @@ def test_scatter_decomposition_and_probe():
     feats = torch.tensor([[-1.0], [0.0], [1.0], [2.0]])
     labels = torch.tensor([0, 0, 1, 1])
     total = feats.square().mean() - feats.mean().square()
-    assert abs(total.item() - (between_scatter(feats, labels, 2) + within_scatter(feats, labels, 2))) < 1e-5
+    sb = between_scatter(feats, labels, 2) + within_scatter(feats, labels, 2)
+    assert abs(total.item() - sb) < 1e-5
     sep = torch.tensor([[-3.0], [3.0], [-3.0], [3.0]])
     assert abs(probe_r2(sep, torch.tensor([0, 1, 0, 1]), 2) - 1.0) < 1e-4
 
